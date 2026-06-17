@@ -59,9 +59,14 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 .descriptionEditable(true)
                 .build()
         )
-        // 3+4. Fixed-time fields — disabled while sunrise/sunset is selected.
+        // 3. Fixed-time fields — disabled while sunrise/sunset is selected.
         actions.add(timeAction(ACTION_ID_DAY_START, R.string.setting_day_start_title, PreferencesManager.dayStartMinutes, !sunrise))
+        actions.add(timeAction(ACTION_ID_EVENING_START, R.string.setting_evening_start_title, PreferencesManager.eveningStartMinutes, !sunrise))
         actions.add(timeAction(ACTION_ID_NIGHT_START, R.string.setting_night_start_title, PreferencesManager.nightStartMinutes, !sunrise))
+
+        // 4. Evening window around sunset — only used (enabled) in sunrise/sunset mode.
+        actions.add(minutesAction(ACTION_ID_EVENING_LEAD, R.string.setting_evening_lead_title, PreferencesManager.eveningLeadMinutes, sunrise))
+        actions.add(minutesAction(ACTION_ID_EVENING_TRAIL, R.string.setting_evening_trail_title, PreferencesManager.eveningTrailMinutes, sunrise))
 
         // 5. Weather on/off: tap to toggle.
         actions.add(
@@ -110,6 +115,16 @@ class SettingsFragment : GuidedStepSupportFragment() {
             .build()
     }
 
+    private fun minutesAction(id: Long, titleRes: Int, minutes: Int, enabled: Boolean): GuidedAction =
+        GuidedAction.Builder(context)
+            .id(id)
+            .title(titleRes)
+            .description(minutes.toString())
+            .editDescription(minutes.toString())
+            .descriptionEditable(true)
+            .enabled(enabled)
+            .build()
+
     private fun infoRow(id: Long, title: String, desc: String): GuidedAction =
         GuidedAction.Builder(context)
             .id(id)
@@ -126,9 +141,12 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 PreferencesManager.useSunriseSunset = sunrise
                 action.description = sourceLabel()
                 notifyActionChanged(findActionPositionById(ACTION_ID_SOURCE))
-                // Grey out / re-enable the fixed-time fields.
+                // Grey out / re-enable the fixed-time fields and the sunrise-only evening window.
                 setEnabled(ACTION_ID_DAY_START, !sunrise)
+                setEnabled(ACTION_ID_EVENING_START, !sunrise)
                 setEnabled(ACTION_ID_NIGHT_START, !sunrise)
+                setEnabled(ACTION_ID_EVENING_LEAD, sunrise)
+                setEnabled(ACTION_ID_EVENING_TRAIL, sunrise)
             }
             ACTION_ID_WEATHER -> {
                 PreferencesManager.useWeather = !PreferencesManager.useWeather
@@ -166,15 +184,31 @@ class SettingsFragment : GuidedStepSupportFragment() {
                 action.description = zipLabel()
                 action.editDescription = zip
             }
-            ACTION_ID_DAY_START, ACTION_ID_NIGHT_START -> {
+            ACTION_ID_DAY_START, ACTION_ID_EVENING_START, ACTION_ID_NIGHT_START -> {
                 val minutes = parseTime(action.editDescription?.toString())
-                val current = if (action.id == ACTION_ID_DAY_START)
-                    PreferencesManager.dayStartMinutes else PreferencesManager.nightStartMinutes
+                val current = when (action.id) {
+                    ACTION_ID_DAY_START -> PreferencesManager.dayStartMinutes
+                    ACTION_ID_EVENING_START -> PreferencesManager.eveningStartMinutes
+                    else -> PreferencesManager.nightStartMinutes
+                }
                 val value = minutes ?: current  // invalid input -> keep previous
-                if (action.id == ACTION_ID_DAY_START) PreferencesManager.dayStartMinutes = value
-                else PreferencesManager.nightStartMinutes = value
+                when (action.id) {
+                    ACTION_ID_DAY_START -> PreferencesManager.dayStartMinutes = value
+                    ACTION_ID_EVENING_START -> PreferencesManager.eveningStartMinutes = value
+                    else -> PreferencesManager.nightStartMinutes = value
+                }
                 action.description = formatTime(value)
                 action.editDescription = formatTime(value)
+            }
+            ACTION_ID_EVENING_LEAD, ACTION_ID_EVENING_TRAIL -> {
+                val entered = action.editDescription?.toString()?.trim()?.toIntOrNull()
+                val current = if (action.id == ACTION_ID_EVENING_LEAD)
+                    PreferencesManager.eveningLeadMinutes else PreferencesManager.eveningTrailMinutes
+                val value = (entered ?: current).coerceIn(0, 360)  // invalid input -> keep previous
+                if (action.id == ACTION_ID_EVENING_LEAD) PreferencesManager.eveningLeadMinutes = value
+                else PreferencesManager.eveningTrailMinutes = value
+                action.description = value.toString()
+                action.editDescription = value.toString()
             }
         }
         return GuidedAction.ACTION_ID_CURRENT
@@ -214,6 +248,9 @@ class SettingsFragment : GuidedStepSupportFragment() {
         private const val ACTION_ID_CHECK_WEATHER = 7L
         private const val ACTION_ID_WEATHER_SOURCES = 8L
         private const val ACTION_ID_PICK_FOLDER = 9L
+        private const val ACTION_ID_EVENING_START = 10L
+        private const val ACTION_ID_EVENING_LEAD = 11L
+        private const val ACTION_ID_EVENING_TRAIL = 12L
 
         private fun formatTime(minutes: Int): String =
             String.format("%02d:%02d", minutes / 60, minutes % 60)

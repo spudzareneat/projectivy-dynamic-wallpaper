@@ -26,7 +26,10 @@ import kotlin.collections.mapTo
 
 object PreferencesManager {
     private const val DAY_START_KEY = "day_start_minutes"
+    private const val EVENING_START_KEY = "evening_start_minutes"
     private const val NIGHT_START_KEY = "night_start_minutes"
+    private const val EVENING_LEAD_KEY = "evening_lead_minutes"
+    private const val EVENING_TRAIL_KEY = "evening_trail_minutes"
     private const val USE_SUNRISE_KEY = "use_sunrise_sunset"
     private const val USE_WEATHER_KEY = "use_weather"
     private const val ZIP_KEY = "zip_code"
@@ -36,9 +39,14 @@ object PreferencesManager {
     private const val WEATHER_CONDITION_KEY = "weather_condition"
     private const val WEATHER_FETCHED_AT_KEY = "weather_fetched_at"
 
-    // Defaults: day from 07:00, night from 19:00 (stored as minutes past midnight)
+    // Defaults: day from 07:00, evening from 18:00, night from 19:00 (minutes past midnight)
     const val DEFAULT_DAY_START = 7 * 60
+    const val DEFAULT_EVENING_START = 18 * 60
     const val DEFAULT_NIGHT_START = 19 * 60
+
+    // Sunrise/sunset mode: evening runs from [lead] min before sunset to [trail] min after.
+    const val DEFAULT_EVENING_LEAD = 45
+    const val DEFAULT_EVENING_TRAIL = 30
 
     lateinit var preferences: SharedPreferences
 
@@ -88,10 +96,25 @@ object PreferencesManager {
         get() = PreferencesManager[DAY_START_KEY, DEFAULT_DAY_START]
         set(value) { PreferencesManager[DAY_START_KEY] = value.coerceIn(0, 1439) }
 
+    /** Minute of the day (0..1439) at which "evening" begins (fixed-time mode). */
+    var eveningStartMinutes: Int
+        get() = PreferencesManager[EVENING_START_KEY, DEFAULT_EVENING_START]
+        set(value) { PreferencesManager[EVENING_START_KEY] = value.coerceIn(0, 1439) }
+
     /** Minute of the day (0..1439) at which "night" begins. */
     var nightStartMinutes: Int
         get() = PreferencesManager[NIGHT_START_KEY, DEFAULT_NIGHT_START]
         set(value) { PreferencesManager[NIGHT_START_KEY] = value.coerceIn(0, 1439) }
+
+    /** Sunrise/sunset mode: minutes before sunset that "evening" begins. */
+    var eveningLeadMinutes: Int
+        get() = PreferencesManager[EVENING_LEAD_KEY, DEFAULT_EVENING_LEAD]
+        set(value) { PreferencesManager[EVENING_LEAD_KEY] = value.coerceIn(0, 360) }
+
+    /** Sunrise/sunset mode: minutes after sunset that "evening" ends (then "night" begins). */
+    var eveningTrailMinutes: Int
+        get() = PreferencesManager[EVENING_TRAIL_KEY, DEFAULT_EVENING_TRAIL]
+        set(value) { PreferencesManager[EVENING_TRAIL_KEY] = value.coerceIn(0, 360) }
 
     /** When true, day/night is decided by computed sunrise/sunset (needs a ZIP); otherwise fixed times. */
     var useSunriseSunset: Boolean

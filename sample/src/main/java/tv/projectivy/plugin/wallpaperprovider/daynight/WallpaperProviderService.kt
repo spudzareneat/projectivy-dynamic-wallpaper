@@ -48,12 +48,11 @@ class WallpaperProviderService : Service() {
         WeatherProvider.maybeRefresh()
 
         val now = System.currentTimeMillis()
-        val day = isDayNow(now)
         val condition = WeatherProvider.conditionOrClear()      // clear | rain | snow
-        val timeKey = if (day) "day" else "night"               // day | night
+        val timeKey = currentPhase(now)                         // day | evening | night
         val base = getExternalFilesDir(null)
 
-        // Prefer the weather-specific folder (e.g. day_rain), fall back to the plain day/night folder.
+        // Prefer the weather-specific folder (e.g. evening_rain), fall back to the plain time-of-day folder.
         val primaryName = if (condition == "clear") timeKey else "${timeKey}_$condition"
         var folderName = primaryName
         var images = imagesIn(base, primaryName)
@@ -65,11 +64,11 @@ class WallpaperProviderService : Service() {
         if (images.isEmpty()) {
             // No user images for this bucket: fall back to the bundled placeholder default.
             val defaultRes = defaultDrawableFor(timeKey, condition)
-            Log.i(TAG, "No user images for '$primaryName' (day=$day, weather=$condition) - using bundled default")
+            Log.i(TAG, "No user images for '$primaryName' (phase=$timeKey, weather=$condition) - using bundled default")
             return listOf(Wallpaper(drawableUri(defaultRes).toString(), WallpaperType.DRAWABLE))
         }
 
-        Log.i(TAG, "day=$day weather=$condition -> folder '$folderName', ${images.size} image(s): ${images.joinToString { it.name }}")
+        Log.i(TAG, "phase=$timeKey weather=$condition -> folder '$folderName', ${images.size} image(s): ${images.joinToString { it.name }}")
         return images.mapNotNull { file -> toWallpaper(file) }
     }
 
@@ -77,10 +76,13 @@ class WallpaperProviderService : Service() {
     private fun defaultDrawableFor(timeKey: String, condition: String): Int =
         when (if (condition == "clear") timeKey else "${timeKey}_$condition") {
             "night" -> R.drawable.def_night
+            "evening" -> R.drawable.def_evening
             "day_rain" -> R.drawable.def_day_rain
             "night_rain" -> R.drawable.def_night_rain
+            "evening_rain" -> R.drawable.def_evening_rain
             "day_snow" -> R.drawable.def_day_snow
             "night_snow" -> R.drawable.def_night_snow
+            "evening_snow" -> R.drawable.def_evening_snow
             else -> R.drawable.def_day
         }
 
@@ -92,17 +94,25 @@ class WallpaperProviderService : Service() {
         .appendPath(resources.getResourceEntryName(resId))
         .build()
 
-    /** Decide day vs night: sunrise/sunset when configured & located, otherwise fixed clock times. */
-    private fun isDayNow(now: Long): Boolean {
+    /** Decide day/evening/night: sunrise/sunset when configured & located, otherwise fixed clock times. */
+    private fun currentPhase(now: Long): String {
         if (PreferencesManager.useSunriseSunset && PreferencesManager.hasLocation) {
-            return SunCalc.isDaytime(
+            val phase = SunCalc.phaseAt(
                 PreferencesManager.latitude.toDouble(),
                 PreferencesManager.longitude.toDouble(),
-                now
+                now,
+                PreferencesManager.eveningLeadMinutes * 60_000L,
+                PreferencesManager.eveningTrailMinutes * 60_000L
             )
+            return phase.folderName
         }
         val nowMin = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
-        return isDayTime(nowMin, PreferencesManager.dayStartMinutes, PreferencesManager.nightStartMinutes)
+        return phaseForTime(
+            nowMin,
+            PreferencesManager.dayStartMinutes,
+            PreferencesManager.eveningStartMinutes,
+            PreferencesManager.nightStartMinutes
+        )
     }
 
     private fun imagesIn(base: File?, name: String): List<File> =
@@ -129,16 +139,26 @@ class WallpaperProviderService : Service() {
         private const val PROJECTIVY_PACKAGE = "com.spocky.projengmenu"
         private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
 
-        // Folders the app creates for the user. Plain day/night plus weather variants.
-        val ALL_FOLDERS = listOf("day", "night", "day_rain", "night_rain", "day_snow", "night_snow")
+        // Folders the app creates for the user. day/evening/night plus weather variants.
+        val ALL_FOLDERS = listOf(
+            "day", "evening", "night",
+            "day_rain", "evening_rain", "night_rain",
+            "day_snow", "evening_snow", "night_snow"
+        )
+
+        /** True if [nowMin] is in the circular window [start, end) on a 24h clock (handles wrap-around). */
+        private fun inWindow(nowMin: Int, start: Int, end: Int): Boolean =
+            if (start <= end) nowMin in start until end else nowMin >= start || nowMin < end
 
         /**
-         * True when [nowMin] falls in the day window [dayStart, nightStart).
-         * Handles the wrap-around case where night starts before day (e.g. day 19:00, night 07:00).
+         * Which fixed-time phase [nowMin] falls in, given the day/evening/night start times.
+         * The three windows tile the clock circularly: day [dayStart, eveningStart),
+         * evening [eveningStart, nightStart), night [nightStart, dayStart).
          */
-        fun isDayTime(nowMin: Int, dayStart: Int, nightStart: Int): Boolean {
-            return if (dayStart <= nightStart) nowMin in dayStart until nightStart
-            else nowMin >= dayStart || nowMin < nightStart
+        fun phaseForTime(nowMin: Int, dayStart: Int, eveningStart: Int, nightStart: Int): String = when {
+            inWindow(nowMin, eveningStart, nightStart) -> "evening"
+            inWindow(nowMin, dayStart, eveningStart) -> "day"
+            else -> "night"
         }
     }
 }

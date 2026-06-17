@@ -4,8 +4,8 @@ appId = "tv.projectivy.plugin.wallpaperprovider.daynight"
 compileSdk = "35"
 minSdk = "23"
 targetSdk = "35"
-versionCode = "1"
-versionName = "1.0"
+versionCode = "4"
+versionName = "1.1"
 
 # Kotlin
 kotlin = "2.3.21"  # https://github.com/JetBrains/kotlin/releases

@@ -14,7 +14,10 @@
     <string name="setting_check_weather_title">Check weather now (tap)</string>
     <string name="setting_weather_sources_title">About weather</string>
     <string name="setting_day_start_title">Day starts at (HH:mm, fixed mode)</string>
+    <string name="setting_evening_start_title">Evening starts at (HH:mm, fixed mode)</string>
     <string name="setting_night_start_title">Night starts at (HH:mm, fixed mode)</string>
+    <string name="setting_evening_lead_title">Evening starts before sunset (min)</string>
+    <string name="setting_evening_trail_title">Evening ends after sunset (min)</string>
     <string name="setting_folders_title">Image folders</string>
     <string name="setting_folders_desc">Put images in the folders inside this app\'s storage</string>
 

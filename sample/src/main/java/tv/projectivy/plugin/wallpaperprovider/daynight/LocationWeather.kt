@@ -11,6 +11,13 @@ import kotlin.math.sin
 
 private const val TAG = "DayNightWallpaper"
 
+/** Time-of-day buckets the app picks images for. */
+enum class DayPhase { DAY, EVENING, NIGHT }
+
+/** Image-folder name for this phase ("day" / "evening" / "night"). */
+val DayPhase.folderName: String
+    get() = name.lowercase()
+
 /**
  * Local sunrise/sunset computation (no network, no API key) using the standard
  * "sunrise equation" (NOAA). Accuracy is a few minutes, which is plenty for day/night.
@@ -19,8 +26,18 @@ object SunCalc {
     private fun sind(deg: Double) = sin(Math.toRadians(deg))
     private fun cosd(deg: Double) = cos(Math.toRadians(deg))
 
-    /** True if [nowMillis] is between today's sunrise and sunset at the given location. */
-    fun isDaytime(latDeg: Double, lonEastDeg: Double, nowMillis: Long): Boolean {
+    /**
+     * Which phase [nowMillis] falls in at the given location. Evening is the window from
+     * [eveningLeadMillis] before sunset to [eveningTrailMillis] after sunset; daytime before
+     * that, night after it. Polar day -> always DAY, polar night -> always NIGHT.
+     */
+    fun phaseAt(
+        latDeg: Double,
+        lonEastDeg: Double,
+        nowMillis: Long,
+        eveningLeadMillis: Long,
+        eveningTrailMillis: Long
+    ): DayPhase {
         val julian = nowMillis / 86400000.0 + 2440587.5            // Julian date of "now"
         val n = Math.round(julian - 2451545.0 + 0.0008).toDouble()  // day number since J2000
         val lw = -lonEastDeg                                        // west longitude positive
@@ -32,12 +49,18 @@ object SunCalc {
         val declination = asin(sind(lambda) * sind(23.44))         // radians
         val latR = Math.toRadians(latDeg)
         val cosOmega = (sind(-0.833) - sin(latR) * sin(declination)) / (cos(latR) * cos(declination))
-        if (cosOmega <= -1.0) return true   // polar day: sun never sets
-        if (cosOmega >= 1.0) return false   // polar night: sun never rises
+        if (cosOmega <= -1.0) return DayPhase.DAY     // polar day: sun never sets
+        if (cosOmega >= 1.0) return DayPhase.NIGHT    // polar night: sun never rises
         val omega = Math.toDegrees(acos(cosOmega))
         val riseMillis = ((transit - omega / 360.0 - 2440587.5) * 86400000.0).toLong()
         val setMillis = ((transit + omega / 360.0 - 2440587.5) * 86400000.0).toLong()
-        return nowMillis in riseMillis until setMillis
+        val eveningStart = setMillis - eveningLeadMillis
+        val eveningEnd = setMillis + eveningTrailMillis
+        return when {
+            nowMillis in eveningStart until eveningEnd -> DayPhase.EVENING
+            nowMillis in riseMillis until eveningStart -> DayPhase.DAY
+            else -> DayPhase.NIGHT
+        }
     }
 }
 
